@@ -1,50 +1,70 @@
-from flask import Flask, render_template
-import json
+import streamlit as st
 
-app = Flask(__name__)
+# 1. 페이지 설정 (넓게 보기)
+st.set_page_config(page_title="마권연구소 실시간 분석판 v5.0", layout="wide")
 
-# 1. 시트에서 가져온 통산전적 데이터를 딕셔너리로 변환하는 함수
-def get_processed_stats(historical_data):
-    stats_map = {}
-    for row in historical_data:
-        # 시트 구조에 따라 인덱스(D열=3 등)는 직접 확인 필요
-        try:
-            name = row[3].strip() # 마명
-            total = row[5] # 총 출전
-            f = row[6]     # 1위
-            s = row[7]     # 2위
-            t = row[8]     # 3위
-            stats_map[name] = f"{total}전 {f}/{s}/{t}"
-        except (IndexError, AttributeError):
-            continue
-    return stats_map
+# 2. 스타일 시트 (경마책 느낌 내기)
+st.markdown("""
+    <style>
+    .horse-card {
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        padding: 15px;
+        background-color: #f9f9f9;
+        margin-bottom: 10px;
+    }
+    .horse-name {
+        font-size: 20px;
+        font-weight: bold;
+        color: #333;
+    }
+    .stats-text {
+        font-size: 14px;
+        color: #666;
+        margin-top: -5px;
+    }
+    .main-info {
+        font-size: 18px;
+        font-weight: bold;
+        color: #d32f2f;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-@app.route('/')
-def index():
-    # 2. 오늘자 출전표 데이터 (DB나 파일에서 가져온다고 가정)
-    # 실제 마권연구소 출전표 리스트 가져오는 로직을 여기에 넣으세요.
-    today_entries = [
-        {"horse_name": "억새", "weight": "52.0kg"},
-        {"horse_name": "달빛위에", "weight": "53.0kg"},
-        {"horse_name": "경복포르토스", "weight": "56.5kg"},
-        {"horse_name": "새내힐", "weight": "54.5kg"}
-    ]
+st.title("🐎 마권연구소 실시간 분석판 v5.0")
+st.subheader("📍 20260322 [부산경남] - 제 1경주")
 
-    # 3. 시트 데이터 로드 (실제 시트 연동 함수 호출)
-    # raw_sheet_data = get_sheet_data() 
-    raw_sheet_data = [] # 예시를 위해 빈 리스트
-    stats_dict = get_processed_stats(raw_sheet_data)
+# 3. 가짜 데이터 (여기에 나중에 시트 연동 함수를 넣으시면 됩니다)
+# 실제로는 historical_data에서 가져온 전적을 매칭하는 로직이 들어갈 자리입니다.
+horses = [
+    {"no": 1, "name": "억새", "stats": "12전 1/2/3", "rate": "25%", "weight": "52.0kg", "jockey": "남정혁"},
+    {"no": 10, "name": "달빛위에", "stats": "8전 0/1/2", "rate": "12%", "weight": "53.0kg", "jockey": "손경민"},
+    {"no": 11, "name": "경복포르토스", "stats": "15전 3/1/0", "rate": "26%", "weight": "56.5kg", "jockey": "신윤섭"},
+    {"no": 12, "name": "새내힐", "stats": "5전 0/0/1", "rate": "0%", "weight": "54.5kg", "jockey": "채상현"},
+]
 
-    # 4. 데이터 매칭 (화면 날림 방지용 안전 장치)
-    for entry in today_entries:
-        name = entry['horse_name']
-        # 시트에 정보가 없으면 "기록 없음"을 강제로 넣어줌
-        entry['career_summary'] = stats_dict.get(name, "기록 없음")
-        # 연승률도 계산 로직 없으면 일단 0%로 고정
-        if 'winning_rate' not in entry:
-            entry['winning_rate'] = "0%"
+# 4. 화면 레이아웃 (2열 구성)
+cols = st.columns(2)
 
-    return render_template('index.html', entries=today_entries)
-
-if __name__ == '__main__':
-    app.run(debug=True)
+for i, horse in enumerate(horses):
+    with cols[i % 2]:
+        st.markdown(f"""
+            <div class="horse-card">
+                <div class="horse-name">[{horse['no']}] {horse['name']}</div>
+                <div class="stats-text">통산 전적: {horse['stats']}</div>
+                <hr style="margin: 10px 0;">
+                <table style="width:100%">
+                    <tr style="text-align: center; color: gray; font-size: 12px;">
+                        <td>연승률</td>
+                        <td>부중</td>
+                    </tr>
+                    <tr style="text-align: center;">
+                        <td class="main-info">{horse['rate']}</td>
+                        <td class="main-info">{horse['weight']}</td>
+                    </tr>
+                </table>
+                <div style="font-size: 12px; color: #888; margin-top: 10px;">
+                    🏇 기수: {horse['jockey']} | 조교사: 정보없음
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
