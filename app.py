@@ -3,22 +3,22 @@ import pandas as pd
 import io
 import requests
 
-# [1] 화면 설정
+# [1] 화면 설정: 아이패드/모바일 최적화
 st.set_page_config(page_title="마권연구소 PRO", layout="wide")
-st.title("🏇 마권연구소 모바일 분석판 v2.0")
+st.title("🏇 마권연구소 모바일 분석판 v2.5")
 
 # [2] 구글 시트 연결
 SHEET_ID = "1UpSdWIIlmFKRJgN3GfZdRUVUHd-TlPXyZLG3JUxQVFk"
 SHEET_NAME = "출전표"
 URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}"
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=60) # 1분마다 데이터 업데이트
 def load_data():
     try:
         response = requests.get(URL)
-        response.encoding = 'utf-8'
+        response.encoding = 'utf-8' # 한글 깨짐 방지
         df = pd.read_csv(io.StringIO(response.text))
-        df.columns = df.columns.str.strip()
+        df.columns = df.columns.str.strip() # 컬럼명 공백 제거
         return df
     except:
         return pd.DataFrame()
@@ -44,39 +44,44 @@ if not df.empty:
     race_data = df[df['rcNo'] == target_rc].sort_values('chulNo')
     
     if not race_data.empty:
-        # 경주 정보 상단 표시
+        # 경주 정보 상단 표시 (요청대로 거리 포함)
         dist = race_data['rcDist'].iloc[0]
         st.subheader(f"📍 {target_date} [{target_meet}] - 제 {target_rc}경주 ({dist}m)")
         st.divider()
 
-        # [3] 말 정보 카드 출력 (요청하신 상세 성적 추가)
+        # [3] 말 정보 카드 출력 (2년 전적 중심으로 개편)
         cols = st.columns(2)
         for idx, row in race_data.reset_index().iterrows():
             with cols[idx % 2]:
                 with st.container(border=True):
-                    # 상단: 번호와 이름, 그리고 베스트 체중
-                    best_wt = row.get('best_weight', '미정') # 시트에 베스트 체중 컬럼이 있다고 가정
-                    st.markdown(f"### **[{row['chulNo']}번] {row['hrName']}** <span style='color:red; font-size:15px;'> (Best: {best_wt}kg)</span>", unsafe_allow_html=True)
+                    # 상단: 번호와 이름, 베스트 체중 (image_10.png 스타일)
+                    best_wt = row.get('best_weight', '미정')
+                    st.markdown(f"### **[{row['chulNo']}번] {row['hrName']}** <small style='color:red;'> (Best: {best_wt}kg)</small>", unsafe_allow_html=True)
                     
-                    # 중간: 성적 데이터 (예: 1전 1/0/0 100%)
-                    r_cnt = int(row.get('rcCnt', 0)) # 총 출전 횟수
-                    o1 = int(row.get('ord1', 0))      # 1위 횟수
-                    o2 = int(row.get('ord2', 0))      # 2위 횟수
-                    o3 = int(row.get('ord3', 0))      # 3위 횟수
-                    win_rate = round((o1 / r_cnt * 100), 1) if r_cnt > 0 else 0
-                    
-                    st.info(f"📊 성적: {r_cnt}전 {o1}/{o2}/{o3} | 승률: {win_rate}%")
+                    # 중간: 전체 성적 (파란색 박스)
+                    r_cnt = int(row.get('rcCnt', 0)) # 전체 출전
+                    o1 = int(row.get('ord1', 0))    # 1등
+                    o2 = int(row.get('ord2', 0))    # 2등
+                    st.info(f"📊 전체 성적: {r_cnt}전 {o1}/{o2}/..")
 
-                    # 하단 메트릭: 기수 정보 및 기승 횟수
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric("기수", str(row['jkName']))
-                    c2.metric("부중", f"{row['wgBudam']}kg")
-                    # 기수와 말의 호흡 (시트에 관련 컬럼이 있다면 사용)
-                    jk_rc_cnt = row.get('jk_rc_cnt', '-') 
-                    c3.metric("기승횟수", f"{jk_rc_cnt}회")
+                    # [핵심 수정을 진행합니다] 메트릭 영역을 2년 전적 중심으로 변경
+                    m1, m2, m3 = st.columns(3)
                     
-                    # 상세 정보
-                    st.write(f"🏇 {row.get('sex','?')}/{row.get('age','?')}세 | 조교사: {row.get('trName','-')} | 마주: {row.get('ownName','-')}")
+                    # 1. 2년 전적 (예: 10전 2/1) - rcCnt2y, ord1_2y, ord2_2y 컬럼 필요
+                    r_cnt_2y = int(row.get('rcCnt2y', 0))
+                    o1_2y = int(row.get('ord1_2y', 0))
+                    o2_2y = int(row.get('ord2_2y', 0))
+                    m1.metric("2년 전적", f"{r_cnt_2y}전 {o1_2y}/{o2_2y}")
+                    
+                    # 2. 2년 복승률(%) 계산 및 표시
+                    qa_rate_2y = round(((o1_2y + o2_2y) / r_cnt_2y * 100), 1) if r_cnt_2y > 0 else 0
+                    m2.metric("2년 복승률", f"{qa_rate_2y}%")
+                    
+                    # 3. 부중
+                    m3.metric("부중", f"{row['wgBudam']}kg")
+                    
+                    # 하단: 상세 정보 (기수 이름은 여기에 작게 표시)
+                    st.write(f"🏇 기수: {row['jkName']} | {row.get('sex','?')}/{row.get('age','?')}세 | 조교사: {row.get('trName','-')}")
     else:
         st.info("데이터가 없습니다.")
 else:
