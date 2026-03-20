@@ -47,26 +47,34 @@ if not df.empty:
     race_data = df[df['rcNo'] == target_rc].sort_values('chulNo')
     
     if not race_data.empty:
-        # [4] 경주 정보 상단 표시 (거리 포함)
-        dist = race_data['rcDist'].iloc[0] # 해당 경주 거리 가져오기
+        # [4] 경주 거리 정보 - 상단 제목 옆으로 이동 (사용자 요청 반영)
+        dist = race_data['rcDist'].iloc[0]
         st.subheader(f"📍 {target_date} [{target_meet}] - 제 {target_rc}경주 ({dist}m)")
         st.divider()
 
-        # [5] 말 정보 카드 출력 (상세 정보 추가)
+        # [5] 말 정보 카드 출력 (오류 해결 버전)
         cols = st.columns(2)
         for idx, row in race_data.reset_index().iterrows():
             with cols[idx % 2]:
                 with st.container(border=True):
-                    # 제목: [번호] 말 이름 (성별/나이/산지)
-                    info = f"{row.get('sex','?')}/{row.get('age','?')}세/{row.get('prd','?')}"
-                    st.markdown(f"### **[{row['chulNo']}번] {row['hrName']}** <small>({info})</small>", unsafe_allow_allow_html=True)
+                    # 성별/나이/산지 정보 안전하게 가져오기
+                    sex = row.get('sex', '?')
+                    age = row.get('age', '?')
+                    prd = row.get('prd', '?')
+                    
+                    # 제목: [번호] 말 이름 (상세스펙)
+                    st.markdown(f"### **[{row['chulNo']}번] {row['hrName']}**")
+                    st.caption(f"({sex} / {age}세 / {prd})")
                     
                     c1, c2 = st.columns(2)
                     c1.metric("기수", str(row['jkName']))
                     c2.metric("부중", f"{row['wgBudam']}kg")
                     
-                    st.write(f"🏇 **조교사:** {row.get('trName', '미정')} | **마주:** {row.get('ownName', '미정')}")
+                    # 하단 조교사/마주 정보
+                    tr = row.get('trName', '미정')
+                    own = row.get('ownName', '미정')
+                    st.write(f"🏇 **조교사:** {tr} | **마주:** {own}")
     else:
-        st.info("선택한 조건의 데이터가 없습니다.")
+        st.info("데이터가 없습니다.")
 else:
     st.error("📡 시트 데이터를 읽을 수 없습니다.")
