@@ -1,70 +1,63 @@
 import streamlit as st
 
-# 1. 페이지 설정 (넓게 보기)
-st.set_page_config(page_title="마권연구소 실시간 분석판 v5.0", layout="wide")
+# 1. 페이지 설정
+st.set_page_config(page_title="마권연구소 v5.0", layout="wide")
 
-# 2. 스타일 시트 (경마책 느낌 내기)
+# 2. 디자인 (CSS)
 st.markdown("""
     <style>
     .horse-card {
-        border: 1px solid #ddd;
-        border-radius: 10px;
-        padding: 15px;
-        background-color: #f9f9f9;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 12px;
+        background-color: white;
         margin-bottom: 10px;
+        box-shadow: 2px 2px 5px rgba(0,0,0,0.05);
     }
-    .horse-name {
-        font-size: 20px;
-        font-weight: bold;
-        color: #333;
-    }
-    .stats-text {
-        font-size: 14px;
-        color: #666;
-        margin-top: -5px;
-    }
-    .main-info {
-        font-size: 18px;
-        font-weight: bold;
-        color: #d32f2f;
-    }
+    .horse-header { display: flex; justify-content: space-between; align-items: center; }
+    .horse-name { font-size: 18px; font-weight: bold; color: #111; }
+    .stats-text { font-size: 13px; color: #666; margin-bottom: 8px; }
+    .info-table { width: 100%; border-top: 1px solid #eee; padding-top: 8px; }
+    .info-label { font-size: 11px; color: #888; text-align: center; }
+    .info-value { font-size: 15px; font-weight: bold; text-align: center; color: #d32f2f; }
     </style>
     """, unsafe_allow_html=True)
 
 st.title("🐎 마권연구소 실시간 분석판 v5.0")
-st.subheader("📍 20260322 [부산경남] - 제 1경주")
 
-# 3. 가짜 데이터 (여기에 나중에 시트 연동 함수를 넣으시면 됩니다)
-# 실제로는 historical_data에서 가져온 전적을 매칭하는 로직이 들어갈 자리입니다.
-horses = [
-    {"no": 1, "name": "억새", "stats": "12전 1/2/3", "rate": "25%", "weight": "52.0kg", "jockey": "남정혁"},
-    {"no": 10, "name": "달빛위에", "stats": "8전 0/1/2", "rate": "12%", "weight": "53.0kg", "jockey": "손경민"},
-    {"no": 11, "name": "경복포르토스", "stats": "15전 3/1/0", "rate": "26%", "weight": "56.5kg", "jockey": "신윤섭"},
-    {"no": 12, "name": "새내힐", "stats": "5전 0/0/1", "rate": "0%", "weight": "54.5kg", "jockey": "채상현"},
-]
+# 3. 데이터 가져오기 (실제 전체 출전표 변수를 여기에 넣으세요)
+# 예: all_horses = get_today_entries() 
+# 일단 전체가 나오는 걸 보여드리기 위해 12마리 예시로 루프를 돌립니다.
+if 'all_horses' not in locals():
+    # 데이터가 없을 때를 대비한 샘플 (실제 데이터 변수로 교체 필수!)
+    all_horses = [
+        {"no": i+1, "name": f"경주마{i+1}", "stats": "10전 1/1/1", "rate": "10%", "weight": "54kg", "jockey": "기수"} 
+        for i in range(12) # 여기서 숫자를 바꾸거나 실제 리스트를 넣으면 전체가 나옵니다.
+    ]
 
-# 4. 화면 레이아웃 (2열 구성)
+# 4. 전체 출력 (2열 레이아웃)
 cols = st.columns(2)
 
-for i, horse in enumerate(horses):
-    with cols[i % 2]:
+for i, horse in enumerate(all_horses):
+    with cols[i % 2]: # 0, 1번 컬럼을 번갈아가며 채움
         st.markdown(f"""
             <div class="horse-card">
-                <div class="horse-name">[{horse['no']}] {horse['name']}</div>
-                <div class="stats-text">통산 전적: {horse['stats']}</div>
-                <hr style="margin: 10px 0;">
-                <table style="width:100%">
-                    <tr style="text-align: center; color: gray; font-size: 12px;">
-                        <td>연승률</td>
-                        <td>부중</td>
+                <div class="horse-header">
+                    <span class="horse-name">[{horse['no']}] {horse['name']}</span>
+                    <span style="color: #007bff; font-weight: bold;">{horse.get('source', '서울')}</span>
+                </div>
+                <div class="stats-text">통산전적: {horse.get('stats', '0전 0/0/0')}</div>
+                <table class="info-table">
+                    <tr>
+                        <td class="info-label">연승률</td>
+                        <td class="info-label">부중</td>
+                        <td class="info-label">기수</td>
                     </tr>
-                    <tr style="text-align: center;">
-                        <td class="main-info">{horse['rate']}</td>
-                        <td class="main-info">{horse['weight']}</td>
+                    <tr>
+                        <td class="info-value">{horse['rate']}</td>
+                        <td class="info-value">{horse['weight']}</td>
+                        <td class="info-value" style="color:#333; font-size:13px;">{horse['jockey']}</td>
                     </tr>
                 </table>
-                <div style="font-size: 12px; color: #888; margin-top: 10px;">
-                    🏇 기수: {horse['jockey']} | 조교사: 정보없음
-                </div>
             </div>
         """, unsafe_allow_html=True)
