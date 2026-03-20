@@ -1,59 +1,74 @@
 import streamlit as st
 import pandas as pd
+import io
+import requests
 
-# [1] 웹 화면 설정 (아이패드/모바일 최적화)
-st.set_page_config(page_title="마권연구소 PRO", layout="wide")
-
+# [1] 화면 설정
+st.set_page_config(page_title="마권연구소 Mobile", layout="wide")
 st.title("🏇 마권연구소 모바일 분석판")
 
-# [2] 구글 시트 연결 (직접 연결 방식)
-# image_a8fc20.png에서 확인된 시트 ID를 사용합니다.
+# [2] 구글 시트 정보 (전달해주신 ID 반영)
 SHEET_ID = "1UpSdWIIlmFKRJgN3GfZdRUVUHd-TlPXyZLG3JUxQVFk"
-URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=출전표"
+SHEET_NAME = "출전표" 
+URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}"
 
-@st.cache_data(ttl=600) # 10분마다 데이터 갱신
+@st.cache_data(ttl=60)
 def load_data():
     try:
-        df = pd.read_csv(URL)
+        # 한글 에러 방지를 위해 requests로 데이터를 먼저 받아온 뒤 인코딩 지정
+        response = requests.get(URL)
+        response.encoding = 'utf-8' # 한글 깨짐 방지 핵심 설정
+        df = pd.read_csv(io.StringIO(response.text))
+        
+        # 컬럼명 공백 제거
+        df.columns = df.columns.str.strip()
         return df
-    except:
+    except Exception as e:
         return pd.DataFrame()
 
-# 데이터 불러오기
 df = load_data()
 
-if df.empty:
-    st.error("📡 구글 시트 연결에 실패했습니다. 시트가 '링크가 있는 모든 사용자'에게 공개되어 있는지 확인해주세요.")
-else:
+if not df.empty:
     # [3] 필터 설정 (사이드바)
     st.sidebar.header("🔍 검색 필터")
     
-    # 날짜 선택
-    dates = sorted(df['rcDate'].unique(), reverse=True)
-    target_date = st.sidebar.selectbox("경주 날짜", dates)
-    
-    # 해당 날짜의 경주 번호 추출
-    available_rc = sorted(df[df['rcDate'] == target_date]['rcNo'].unique())
-    target_rc = st.sidebar.select_slider("경주 번호", options=available_rc)
-
-    # [4] 분석 카드 출력
-    current_race = df[(df['rcDate'] == target_date) & (df['rcNo'] == target_rc)].sort_values('chulNo')
-    
-    st.subheader(f"📍 {target_date} - {target_rc}경주 출전 명단")
-    
-    # 아이패드 2열 배치
-    cols = st.columns(2)
-    for idx, row in current_race.reset_index().iterrows():
-        with cols[idx % 2]:
-            with st.container(border=True):
-                st.markdown(f"### **[{row['chulNo']}번] {row['hrName']}**")
-                
-                c1, c2 = st.columns(2)
-                c1.metric("기수", row['jkName'])
-                c2.metric("부중", f"{row['wgBudam']}kg")
-                
-                st.caption(f"🏇 조교사: {row['trName']} | 거리: {row['rcDist']}m")
-                st.divider()
+    # 날짜(rcDate) 확인
+    if 'rcDate' in df.columns:
+        df['rcDate'] = df['rcDate'].astype(str)
+        dates = sorted(df['rcDate'].unique(), reverse=True)
+        target_date = st.sidebar.selectbox("📅 날짜 선택", dates)
+        
+        day_df = df[df['rcDate'] == target_date]
+        
+        # 경주번호(rcNo) 확인
+        if 'rcNo' in day_df.columns:
+            races = sorted(day_df['rcNo'].unique())
+            target_rc = st.sidebar.select_slider("🚩 경주 번호", options=races)
+            
+            # [4] 결과 출력
+            race_data = day_df[day_df['rcNo'] == target_rc].sort_values('chulNo')
+            
+            st.subheader(f"📍 {target_date} - 제 {target_rc}경주")
+            
+            # 2열 배치
+            cols = st.columns(2)
+            for idx, row in race_data.reset_index().iterrows():
+                with cols[idx % 2]:
+                    with st.container(border=True):
+                        st.markdown(f"### **[{row['chulNo']}번] {row['hrName']}**")
+                        
+                        m1, m2, m3 = st.columns(3)
+                        m1.metric("기수", str(row['jkName']))
+                        m2.metric("부중", f"{row['wgBudam']}kg")
+                        m3.metric("거리", f"{row['rcDist']}m")
+                        
+                        st.write(f"🏇 조교사: {row['trName']} | 마주: {row['ownName']}")
+        else:
+            st.warning("시트에 'rcNo' 컬럼이 없습니다.")
+    else:
+        st.warning("시트에 'rcDate' 컬럼이 없습니다.")
+else:
+    st.error("📡 데이터를 불러올 수 없습니다. 구글 시트 [공유] 설정이 '링크가 있는 모든 사용자-뷰어'인지 꼭 확인하세요!")
 
 st.sidebar.markdown("---")
-st.sidebar.write("v1.0 Mobile Web")
+st.sidebar.caption("v1.6 한글 인코딩 보완판")
