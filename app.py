@@ -1,100 +1,33 @@
-import streamlit as st
-import pandas as pd
-import io
-import requests
+def get_career_stats(entries, historical_data):
+    """
+    entries: 오늘자 출전표 리스트 (마명 포함)
+    historical_data: 구글 시트 등에서 가져온 전체 말 전적 데이터
+    """
+    # 1. 전적 데이터를 마명(horse_name) 키로 딕셔너리화 (속도 최적화)
+    stats_map = {}
+    for data in historical_data:
+        name = data.get('horseName') # 시트의 마명 컬럼명 확인 필요
+        if name:
+            # 예: "15전 2/3/1" 형태의 데이터를 만들기 위해 필요한 값들
+            total = data.get('totalRun', 0) # 총 출전수
+            first = data.get('firstPlace', 0) # 1위
+            second = data.get('secondPlace', 0) # 2위
+            third = data.get('thirdPlace', 0) # 3위
+            
+            stats_map[name] = f"{total}전 {first}/{second}/{third}"
 
-# [1] 화면 및 기본 설정
-st.set_page_config(page_title="마권연구소 PRO", layout="wide")
-st.title("🏇 마권연구소 실시간 분석판 v5.0")
+    # 2. 출전표를 돌면서 전적 문자열 추가
+    for entry in entries:
+        horse = entry['horse_name']
+        # 시트에서 찾은 전적이 있으면 넣고, 없으면 신마(0전 0/0/0) 처리
+        entry['career_summary'] = stats_map.get(horse, "0전 0/0/0")
 
-# 구글 시트 ID
-SHEET_ID = "1UpSdWIIlmFKRJgN3GfZdRUVUHd-TlPXyZLG3JUxQVFk"
+    return entries
 
-@st.cache_data(ttl=60)
-def get_sheet_df(sheet_name):
-    """구글 시트 읽기 + 공백 제거 및 텍스트 표준화"""
-    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
-    try:
-        res = requests.get(url)
-        res.encoding = 'utf-8'
-        df = pd.read_csv(io.StringIO(res.text))
-        # 컬럼명 앞뒤 공백 제거
-        df.columns = df.columns.str.strip()
-        # 모든 데이터를 문자로 변환하고 앞뒤 공백 제거
-        df = df.fillna('').astype(str)
-        df = df.apply(lambda x: x.str.strip())
-        return df
-    except:
-        return pd.DataFrame()
+# --- 사용 예시 ---
+# entries = [{'horse_name': '억새', 'race_no': 1}, {'horse_name': '달빛위에', 'race_no': 1}]
+# updated_entries = get_career_stats(entries, sheet_data)
 
-# [2] 메인 데이터 로드 (출전표)
-df_main = get_sheet_df("출전표")
-
-if not df_main.empty:
-    st.sidebar.header("🔍 검색 필터")
-    
-    # 1. 지역 선택 (서울/부산/제주)
-    meets = sorted(df_main['meet'].unique()) if 'meet' in df_main.columns else ["서울", "제주", "부산"]
-    target_meet = st.sidebar.selectbox("📍 지역 선택", meets)
-    
-    # 2. 성적 데이터 로드 (지역 선택에 따라 해당 탭 읽기)
-    df_stat = get_sheet_df(target_meet)
-    
-    # 3. 날짜 및 경주 선택
-    dates = sorted(df_main[df_main['meet'] == target_meet]['rcDate'].unique(), reverse=True)
-    target_date = st.sidebar.selectbox("📅 날짜 선택", dates if dates else ["데이터없음"])
-    
-    r_list = df_main[(df_main['meet']==target_meet) & (df_main['rcDate']==target_date)]['rcNo'].unique()
-    target_rc = st.sidebar.select_slider("🚩 경주 번호", options=sorted(r_list)) if len(r_list) > 0 else "1"
-    
-    # 필터링 데이터
-    race_data = df_main[(df_main['meet']==target_meet) & (df_main['rcDate']==target_date) & (df_main['rcNo']==target_rc)].sort_values('chulNo')
-    
-    if not race_data.empty:
-        st.subheader(f"📍 {target_date} [{target_meet}] - 제 {target_rc}경주")
-        st.divider()
-
-        cols = st.columns(2)
-        for idx, row in race_data.reset_index().iterrows():
-            with cols[idx % 2]:
-                with st.container(border=True):
-                    # 출전표에서 말 이름과 번호 가져오기
-                    hr_name = row.get('hrName', '').strip()
-                    hr_no = row.get('hrNo', '').strip()
-                    
-                    # [핵심 매칭 로직] 성적 탭(df_stat)에서 '마명' 컬럼으로 검색
-                    # 성적 탭(서울, 부산, 제주)의 컬럼명이 '마명'인 것을 사용합니다.
-                    if not df_stat.empty and '마명' in df_stat.columns:
-                        hr_records = df_stat[df_stat['마명'] == hr_name]
-                        
-                        if not hr_records.empty:
-                            # '순위' 컬럼을 숫자로 변환하여 전적 계산
-                            hr_records['순위_num'] = pd.to_numeric(hr_records['순위'], errors='coerce')
-                            rc_cnt = len(hr_records)
-                            o1 = len(hr_records[hr_records['순위_num'] == 1])
-                            o2 = len(hr_records[hr_records['순위_num'] == 2])
-                            o3 = len(hr_records[hr_records['순위_num'] == 3])
-                            
-                            place_rate = round(((o1 + o2 + o3) / rc_cnt * 100), 1) if rc_cnt > 0 else 0
-                            stat_text = f"{rc_cnt}전 {o1}/{o2}/{o3}"
-                        else:
-                            stat_text = "기록 없음"
-                            place_rate = 0
-                    else:
-                        stat_text = "성적탭 확인불가"
-                        place_rate = 0
-                    
-                    # 카드 출력
-                    st.markdown(f"### **[{row.get('chulNo', '-')}] {hr_name}**")
-                    st.caption(f"No: {hr_no} | {row.get('rcDist', '-')}m")
-                    
-                    m1, m2, m3 = st.columns(3)
-                    m1.metric("통산 전적", stat_text)
-                    m2.metric("연승률", f"{place_rate}%")
-                    m3.metric("부중", f"{row.get('wgBudam', '-')}kg")
-                    
-                    st.write(f"🏇 기수: {row.get('jkName', '-')} | 조교사: {row.get('trName', '-')}")
-    else:
-        st.info("해당 경주 데이터를 찾을 수 없습니다.")
-else:
-    st.error("📡 구글 시트 연결 실패!")
+# 이제 프론트엔드(HTML)에서는 아래처럼 출력하면 됩니다:
+# <div>{{ horse_name }}</div>
+# <div style="font-size: 0.8em; color: gray;">{{ career_summary }}</div>
