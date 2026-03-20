@@ -3,86 +3,82 @@ import pandas as pd
 import io
 import requests
 
-# [1] 화면 설정: 아이패드/모바일 최적화
+# [1] 화면 설정
 st.set_page_config(page_title="마권연구소 PRO", layout="wide")
-st.title("🏇 마권연구소 모바일 분석판 v2.5")
+st.title("🏇 마권연구소 모바일 분석판 v3.0")
 
-# [2] 구글 시트 연결
 SHEET_ID = "1UpSdWIIlmFKRJgN3GfZdRUVUHd-TlPXyZLG3JUxQVFk"
-SHEET_NAME = "출전표"
-URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}"
 
-@st.cache_data(ttl=60) # 1분마다 데이터 업데이트
-def load_data():
+@st.cache_data(ttl=60)
+def get_sheet_df(sheet_name):
+    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
     try:
-        response = requests.get(URL)
-        response.encoding = 'utf-8' # 한글 깨짐 방지
-        df = pd.read_csv(io.StringIO(response.text))
-        df.columns = df.columns.str.strip() # 컬럼명 공백 제거
+        res = requests.get(url)
+        res.encoding = 'utf-8'
+        df = pd.read_csv(io.StringIO(res.text))
+        df.columns = df.columns.str.strip()
         return df
     except:
         return pd.DataFrame()
 
-df = load_data()
+# [2] 메인 데이터 로드 (출전표)
+df_main = get_sheet_df("출전표")
 
-if not df.empty:
+if not df_main.empty:
     st.sidebar.header("🔍 검색 필터")
     
-    # 지역/날짜/경주 선택
-    meets = sorted(df['meet'].unique()) if 'meet' in df.columns else []
+    # 1. 지역 선택 (이 선택에 따라 성적 탭도 바뀝니다)
+    meets = sorted(df_main['meet'].unique()) if 'meet' in df_main.columns else ["제주", "서울", "부산"]
     target_meet = st.sidebar.selectbox("📍 지역 선택", meets)
-    df = df[df['meet'] == target_meet]
-
-    df['rcDate'] = df['rcDate'].astype(str)
-    dates = sorted(df['rcDate'].unique(), reverse=True)
-    target_date = st.sidebar.selectbox("📅 날짜 선택", dates)
-    df = df[df['rcDate'] == target_date]
     
-    races = sorted(df['rcNo'].unique())
+    # 2. 해당 지역 성적 탭 미리 로드
+    df_stat = get_sheet_df(target_meet) # '제주' 선택시 '제주' 탭 로드
+    
+    # 날짜/경주 필터링
+    df_main['rcDate'] = df_main['rcDate'].astype(str)
+    dates = sorted(df_main['rcDate'].unique(), reverse=True)
+    target_date = st.sidebar.selectbox("📅 날짜 선택", dates)
+    
+    races = sorted(df_main[(df_main['meet']==target_meet) & (df_main['rcDate']==target_date)]['rcNo'].unique())
     target_rc = st.sidebar.select_slider("🚩 경주 번호", options=races)
     
-    race_data = df[df['rcNo'] == target_rc].sort_values('chulNo')
+    race_data = df_main[(df_main['meet']==target_meet) & (df_main['rcDate']==target_date) & (df_main['rcNo']==target_rc)].sort_values('chulNo')
     
     if not race_data.empty:
-        # 경주 정보 상단 표시 (요청대로 거리 포함)
         dist = race_data['rcDist'].iloc[0]
         st.subheader(f"📍 {target_date} [{target_meet}] - 제 {target_rc}경주 ({dist}m)")
         st.divider()
 
-        # [3] 말 정보 카드 출력 (2년 전적 중심으로 개편)
         cols = st.columns(2)
         for idx, row in race_data.reset_index().iterrows():
             with cols[idx % 2]:
                 with st.container(border=True):
-                    # 상단: 번호와 이름, 베스트 체중 (image_10.png 스타일)
-                    best_wt = row.get('best_weight', '미정')
-                    st.markdown(f"### **[{row['chulNo']}번] {row['hrName']}** <small style='color:red;'> (Best: {best_wt}kg)</small>", unsafe_allow_html=True)
+                    hr_name = row['hrName']
                     
-                    # 중간: 전체 성적 (파란색 박스)
-                    r_cnt = int(row.get('rcCnt', 0)) # 전체 출전
-                    o1 = int(row.get('ord1', 0))    # 1등
-                    o2 = int(row.get('ord2', 0))    # 2등
-                    st.info(f"📊 전체 성적: {r_cnt}전 {o1}/{o2}/..")
-
-                    # [핵심 수정을 진행합니다] 메트릭 영역을 2년 전적 중심으로 변경
+                    # [핵심] 성적 탭에서 해당 마필의 데이터 찾기
+                    # 성적 탭의 말 이름 컬럼이 '마명' 또는 'hrName'이라고 가정합니다.
+                    hr_stat = df_stat[df_stat['마명'] == hr_name] if '마명' in df_stat.columns else df_stat[df_stat['hrName'] == hr_name]
+                    
+                    # 2년 전적 데이터 추출 (항목명은 시트 상황에 맞게 보정)
+                    # 예: '2년전적', '1착', '2착', '3착' 등
+                    rc_cnt_2y = hr_stat['2년전적'].iloc[0] if not hr_stat.empty and '2년전적' in hr_stat.columns else 0
+                    o1 = hr_stat['1착'].iloc[0] if not hr_stat.empty and '1착' in hr_stat.columns else 0
+                    o2 = hr_stat['2착'].iloc[0] if not hr_stat.empty and '2착' in hr_stat.columns else 0
+                    o3 = hr_stat['3착'].iloc[0] if not hr_stat.empty and '3착' in hr_stat.columns else 0
+                    
+                    # 연승률 계산 (1,2,3등 합계 / 총 출전)
+                    place_rate = round(((o1 + o2 + o3) / rc_cnt_2y * 100), 1) if rc_cnt_2y > 0 else 0
+                    
+                    st.markdown(f"### **[{row['chulNo']}번] {hr_name}**")
+                    
+                    # 2년 전적 메트릭
                     m1, m2, m3 = st.columns(3)
-                    
-                    # 1. 2년 전적 (예: 10전 2/1) - rcCnt2y, ord1_2y, ord2_2y 컬럼 필요
-                    r_cnt_2y = int(row.get('rcCnt2y', 0))
-                    o1_2y = int(row.get('ord1_2y', 0))
-                    o2_2y = int(row.get('ord2_2y', 0))
-                    m1.metric("2년 전적", f"{r_cnt_2y}전 {o1_2y}/{o2_2y}")
-                    
-                    # 2. 2년 복승률(%) 계산 및 표시
-                    qa_rate_2y = round(((o1_2y + o2_2y) / r_cnt_2y * 100), 1) if r_cnt_2y > 0 else 0
-                    m2.metric("2년 복승률", f"{qa_rate_2y}%")
-                    
-                    # 3. 부중
+                    m1.metric("2년 전적", f"{int(rc_cnt_2y)}전 {int(o1)}/{int(o2)}/{int(o3)}")
+                    m2.metric("연승률", f"{place_rate}%")
                     m3.metric("부중", f"{row['wgBudam']}kg")
                     
-                    # 하단: 상세 정보 (기수 이름은 여기에 작게 표시)
-                    st.write(f"🏇 기수: {row['jkName']} | {row.get('sex','?')}/{row.get('age','?')}세 | 조교사: {row.get('trName','-')}")
+                    st.caption(f"🏇 기수: {row['jkName']} | {row.get('sex','?')}/{row.get('age','?')}세 | 조교사: {row.get('trName','-')}")
     else:
-        st.info("데이터가 없습니다.")
+        st.info("데이터를 찾을 수 없습니다.")
 else:
-    st.error("📡 시트 데이터를 읽을 수 없습니다.")
+    st.error("📡 시트 연결 오류!")
